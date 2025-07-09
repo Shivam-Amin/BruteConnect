@@ -56,12 +56,12 @@ public class MainActivity extends FlutterActivity implements MDNSService.DeviceD
             }
         });
     }
-
-//    @Override
-//    protected void onDestroy() {
-//        if (mdnsService != null) {
-//            mdnsService.stopServicr();
-//        }
-//        super.onDestroy();
-//    }
+    
+    @Override
+    protected void onDestroy() {
+        if (mdnsService != null) {
+            mdnsService.stopService();
+        }
+        super.onDestroy();
+    }
 }
