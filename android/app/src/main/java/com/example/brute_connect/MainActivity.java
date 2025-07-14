@@ -1,3 +1,5 @@
+// File: android/app/src/main/java/com/example/mdns_connect_app/MainActivity.java
+
 package com.example.brute_connect;
 
 import androidx.annotation.NonNull;
@@ -56,7 +58,7 @@ public class MainActivity extends FlutterActivity implements MDNSService.DeviceD
             }
         });
     }
-    
+
     @Override
     protected void onDestroy() {
         if (mdnsService != null) {

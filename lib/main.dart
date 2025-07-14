@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:brute_connect/pages/device_discoveryScreen.dart';
+import 'package:brute_connect/pages/device_discovery_screen.dart';
 
 void main() {
   runApp(const MyApp());

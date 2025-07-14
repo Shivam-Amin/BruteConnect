@@ -12,12 +12,14 @@ import android.util.Log;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class MDNSService {
     private static final String TAG = "MDNSService";
-    private static final String SERVICE_NAME = "Brute Connect";
+    private static final String SERVICE_NAME = "bruteconnect";
     private static final String SERVICE_TYPE = "_mdnsconnect._udp";
 //    private static final int SERVICE_PORT = 55555;
 
@@ -30,8 +32,13 @@ public class MDNSService {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private String serviceName;
+    private String ownIP;
     private boolean isRegistered = false;
     private boolean isDiscovering = false;
+    private boolean isDiscoveryActive = false;
+
+    private final Map<String, Map<String, Object>> discoveredDevicesByIp = new HashMap<>();
+
 
     private final Context context;
     private ServerSocket serverSocket;
@@ -113,6 +120,7 @@ public class MDNSService {
         // Register service on the local network with the registrationListener instance of NsdManager.RegistrationListener.
         nsdManager.registerService(
                 serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener);
+        Log.d(TAG, "Attempting to register service: " + serviceName);
     }
 
     /**
@@ -129,7 +137,38 @@ public class MDNSService {
             @Override
             public void onDiscoveryStarted(String serviceType) {
                 isDiscovering = true;
-                Log.d(TAG, "Service discovery started");
+                Log.d(TAG, "Service discovery started:" + serviceType);
+            }
+
+            @Override
+            public void onServiceFound(NsdServiceInfo serviceInfo) {
+                // TODO: 2-tasks
+                // 1. Create a logic to uniquely identify services from each device.
+                // Work on SERVICE_NAME,
+                // like, unique-id generated for each device, or using device name
+                // 2. On service found, if its new service, call resolveService().
+                // Maybe, use a DS, that stores all the devices found.
+                // NOTE: so find a way to store data for each device, such that there uniquely identified.
+                Log.d(TAG, "Found service: " + serviceInfo.getServiceName());
+
+                String foundService = serviceInfo.getServiceName();
+                if (isRegistered && foundService.equals(serviceName)) {
+//                    ownIP = serviceInfo.getHost().getHostAddress();
+                    Log.d(TAG, "Found our own service, ignoring: " + foundService);
+                    Log.d(TAG, String.valueOf(localPort));
+                    return;
+                }
+
+                Log.d(TAG, "Found service: " + foundService);
+                Log.d(TAG, String.valueOf(localPort));
+                resolveService(serviceInfo);
+            }
+
+            @Override
+            public void onServiceLost(NsdServiceInfo serviceInfo) {
+                //
+                String lostName = serviceInfo.getServiceName();
+                Log.d(TAG, "Service lost: " + lostName);
             }
 
             @Override
@@ -139,29 +178,15 @@ public class MDNSService {
             }
 
             @Override
-            public void onServiceFound(NsdServiceInfo serviceInfo) {
-                // TODO: 2-tasks
-                // 1. Create a logic to find the service by SERVICE_TYPE.
-                // 2. store the device info by the serviceInfo.
-                resolveService(serviceInfo);
-
-            }
-
-            @Override
-            public void onServiceLost(NsdServiceInfo serviceInfo) {
-
-            }
-
-            @Override
             public void onStartDiscoveryFailed(String serviceType, int errorCode) {
                 isDiscovering = false;
-                nsdManager.stopServiceDiscovery(this);
+//                nsdManager.stopServiceDiscovery(discoveryListener);
                 Log.e(TAG, "Discovery failed: Error code:" + errorCode);
             }
 
             @Override
             public void onStopDiscoveryFailed(String serviceType, int errorCode) {
-                nsdManager.stopServiceDiscovery(this);
+//                nsdManager.stopServiceDiscovery(discoveryListener);
                 Log.e(TAG, "Discovery failed: Error code:" + errorCode);
             }
         };
@@ -169,29 +194,142 @@ public class MDNSService {
         // discover services on local network with the discoveryListener instance of NsdManger.DiscoveryListener.
         nsdManager.discoverServices(
                 SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, discoveryListener);
+        Log.d("MDNSService", "Starting discovery with listener: " + discoveryListener.toString());
+        isDiscoveryActive = true;
 
     }
 
     private void resolveService(NsdServiceInfo serviceInfo) {
+        // TODO:
+        // 1. Get things you need to store from the device discovery by mDNS.
+        // 2. After that, what DS to use.
+        // 3. How to condition on finding a mDNS service,
+        //  NOTE: like, how do we know that the service is already found and no need to resolve it.
+//        final String serviceToResolve = serviceInfo.getServiceName();
+
         resolveListener = new NsdManager.ResolveListener() {
             @Override
             public void onResolveFailed(NsdServiceInfo serviceInfo, int errorCode) {
+                final String resolvedName = serviceInfo.getServiceName();
                 // Called when the resolve fails. Use the error code to debug.
-                Log.e(TAG, "Resolve failed: " + errorCode);
+                Log.e(TAG, "Resolve failed for " + resolvedName + ": " + errorCode);
             }
 
             @Override
-            public void onServiceResolved(NsdServiceInfo serviceInfo) {
-                Log.e(TAG, "Resolve Succeeded. " + serviceInfo);
+            public void onServiceResolved(NsdServiceInfo resolveService) {
+                // Get
+                String resolvedServiceName = resolveService.getServiceName();
+                String resolvedHostAddress = resolveService.getHost().getHostAddress();
+                int resolvedPort = resolveService.getPort();
 
-                if (serviceInfo.getServiceName().equals(serviceName)) {
-                    Log.d(TAG, "Same IP.");
+                Log.d(TAG, "Resolved service: " + resolvedServiceName +
+                        " at " + resolvedHostAddress + ":" + resolvedPort);
+
+                Log.e(TAG, "Resolve Succeeded. " + resolvedServiceName);
+                Log.d(TAG, resolveService.getAttributes().toString());
+
+                // Save our own IP address if this is our service
+                if (serviceName != null && resolvedServiceName.equals(serviceName)) {
+                    ownIP = resolvedHostAddress;
+                    Log.d(TAG, "Identified own device IP: /////////////" + ownIP);
                     return;
                 }
-                int port = serviceInfo.getPort();
-                InetAddress host = serviceInfo.getHost();
+
+                // Skip our own service by checking IP
+                if (ownIP != null && resolvedHostAddress.equals(ownIP)) {
+                    Log.d(TAG, "Skipping our own service based on IP: " + resolvedHostAddress);
+                    return;
+                }
+
+
+                // Get device detailed and store it.
+                // Read device attributes
+                Map<String, String> attributeMap = new HashMap<>();
+                Map<String, byte[]> attributes = resolveService.getAttributes();
+                if (attributes != null) {
+                    for (String key : attributes.keySet()) {
+                        byte[] value = attributes.get(key);
+                        if (value != null) {
+                            attributeMap.put(key, new String(value));
+                        }
+                    }
+                }
+
+                // Try to get a device ID from attributes
+                String deviceName = attributeMap.get("deviceName");
+                if (deviceName == null) {
+                    deviceName = resolvedServiceName;
+                }
+
+                // Create or update device info map
+                Map<String, Object> deviceInfo = new HashMap<>();
+                deviceInfo.put("name", deviceName);
+                deviceInfo.put("address", resolvedHostAddress);
+                deviceInfo.put("port", resolvedPort);
+//                deviceInfo.putAll(attributeMap);
+
+                // Use IP as key if no device ID available
+//                String deviceKey = deviceId != null ? deviceId : hostAddress;
+                String deviceKey = resolvedHostAddress;
+                discoveredDevicesByIp.put(deviceKey, deviceInfo);
+                Log.d(TAG, deviceInfo.toString());
+                notifyDevicesUpdated();
+
+
+//                InetAddress host;
+                // Old (deprecated)
+                // InetAddress host = serviceInfo.getHost();
+
+                // New (recommended)
+//                List<InetAddress> addresses = null;
+//                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R
+//                        && android.os.ext.SdkExtensions.getExtensionVersion(android.os.Build.VERSION_CODES.TIRAMISU) >= 7) {
+//                    addresses = serviceInfo.getHostAddresses();
+//                    hostAddress = addresses.isEmpty() ? null : addresses.get(0);
+//                } else {
+//                    // Deprecated fallback for older OS versions
+//                    hostAddress = serviceInfo.getHost();
+//                }
             }
         };
+
+        try {
+            nsdManager.resolveService(serviceInfo, resolveListener);
+        } catch (Exception e) {
+            Log.e(TAG, "Error resolving service: " + e.getMessage());
+//            synchronized (resolveInProgress) {
+//                resolveInProgress.remove(serviceToResolve);
+//            }
+        }
+    }
+
+    private void notifyDevicesUpdated() {
+        if (deviceDiscoveryListener != null) {
+            List<Map<String, Object>> devicesList;
+            synchronized (discoveredDevicesByIp) {
+                devicesList = new ArrayList<>(discoveredDevicesByIp.values());
+            }
+
+            mainHandler.post(() -> {
+                deviceDiscoveryListener.onDeviceDiscovered(devicesList);
+            });
+        }
+    }
+
+    public void stopDiscovery() {
+        if (isDiscovering && nsdManager != null && discoveryListener != null) {
+            try {
+                Log.d("MDNSService", "Starting discovery with listener: " + discoveryListener.toString());
+                nsdManager.stopServiceDiscovery(discoveryListener);
+            } catch (IllegalArgumentException e) {
+                // Log the error, but it might be okay if it's already stopped
+                Log.e("MDNSService", "Error stopping discovery: " + e.getMessage());
+            } finally {
+                isDiscoveryActive = false;
+                isDiscovering = false;
+                discoveryListener = null;
+            }
+        }
     }
 
     public void stopBroadcast() {
@@ -204,26 +342,6 @@ public class MDNSService {
                 Log.e(TAG, "Error unregistering service.", e);
             }
             registrationListener = null;
-        }
-    }
-
-    public void stopDiscovery() {
-        if (isDiscovering && nsdManager != null && discoveryListener != null) {
-            try {
-                nsdManager.stopServiceDiscovery(discoveryListener);
-
-                // if statement is from auto-complete by the quick fix.
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && SdkExtensions.getExtensionVersion(Build.VERSION_CODES.TIRAMISU) >= 7) {
-                    nsdManager.stopServiceResolution(resolveListener);
-                    Log.d(TAG, "Stopped resolving.");
-                }
-                isDiscovering = false;
-                Log.d(TAG, "Stopped discovery.");
-            } catch (Error e) {
-                Log.e(TAG, "Error stopping discovery", e);
-            }
-            discoveryListener = null;
-            resolveListener = null;
         }
     }
 
