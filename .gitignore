@@ -5,8 +5,8 @@
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-build/                  # root-level build/
-**/build/               # any nested build/ like android/app/build/
+build/
+**/build/
 **/doc/api/
 **/.last_build_id
 
