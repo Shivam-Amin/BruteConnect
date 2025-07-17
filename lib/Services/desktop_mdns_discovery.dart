@@ -8,7 +8,7 @@ import 'package:multicast_dns/multicast_dns.dart';
 class DesktopMDNSDiscovery {
   // Use the same service type as defined in your Android service
   // static const String _serviceType = '_mdnsconnect._udp.local';
-  static const String _serviceType = '_mdnsconnect._tcp.local.';
+  static const String _serviceType = '_mdnsconnect._udp.local';
 
   final MDnsClient _mdnsClient = MDnsClient();
   final List<DeviceInfo> _discoveredDevices = [];
@@ -77,6 +77,7 @@ class DesktopMDNSDiscovery {
               port: srv.port,
               // properties: txtData,
             );
+            debugPrint(device.toString());
 
             // Add device if not already in the list
             if (!_discoveredDevices.any((d) => d.name == device.name)) {
@@ -84,7 +85,7 @@ class DesktopMDNSDiscovery {
               _notifyListeners();
             }
 
-            break; // Just get the first IP
+            // break; // Just get the first IP
           }
         }
       }

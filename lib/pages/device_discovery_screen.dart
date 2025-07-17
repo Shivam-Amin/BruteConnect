@@ -17,7 +17,7 @@ class _DeviceDiscoveryScreen extends State<DeviceDiscoveryScreen> {
   static const platform = MethodChannel('com.example.brute_connect/mdns');
 
   final List<Map<String, dynamic>> _discoveredDevices = [];
-  bool _isDiscovering = true;
+  bool _isDiscovering = false;
   String _statusMessage = 'Starting service...';
   Timer? _discoveryTimer;
   final int _discoveryDuration = 10; // seconds to run discovery
@@ -31,6 +31,7 @@ class _DeviceDiscoveryScreen extends State<DeviceDiscoveryScreen> {
     super.initState();
 
     if (Platform.isAndroid || Platform.isIOS) {
+      _isDiscovering = true; // make it true, so that for initial _startBroadcastAndDiscovery(), it stays disabled.
       _setupMethodCallHandler();
       // Start broadcasting and initial discovery automatically for mobile
       WidgetsBinding.instance.addPostFrameCallback((_) {
