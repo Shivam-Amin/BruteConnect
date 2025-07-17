@@ -11,7 +11,7 @@ import io.flutter.embedding.android.FlutterActivity;
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.plugin.common.MethodChannel;
 
-public class MainActivity extends FlutterActivity implements MDNSService.DeviceDiscoveryListener {
+public class MainActivity extends FlutterActivity implements MDNSService.MDNSServiceListener {
     private static final String CHANNEL = "com.example.brute_connect/mdns";
     private MDNSService mdnsService;
     private MethodChannel channel;
@@ -60,10 +60,20 @@ public class MainActivity extends FlutterActivity implements MDNSService.DeviceD
     }
 
     @Override
+    public void onServiceRegistered() {
+        runOnUiThread(() -> {
+            if (channel != null) {
+                channel.invokeMethod("onServiceRegistered", null);
+            }
+        });
+    }
+
+    @Override
     protected void onDestroy() {
         if (mdnsService != null) {
             mdnsService.stopService();
         }
         super.onDestroy();
     }
+
 }

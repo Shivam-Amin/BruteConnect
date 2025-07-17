@@ -17,7 +17,7 @@ class _DeviceDiscoveryScreen extends State<DeviceDiscoveryScreen> {
   static const platform = MethodChannel('com.example.brute_connect/mdns');
 
   final List<Map<String, dynamic>> _discoveredDevices = [];
-  bool _isDiscovering = false;
+  bool _isDiscovering = true;
   String _statusMessage = 'Starting service...';
   Timer? _discoveryTimer;
   final int _discoveryDuration = 10; // seconds to run discovery
@@ -33,10 +33,9 @@ class _DeviceDiscoveryScreen extends State<DeviceDiscoveryScreen> {
     if (Platform.isAndroid || Platform.isIOS) {
       _setupMethodCallHandler();
       // Start broadcasting and initial discovery automatically for mobile
-      // WidgetsBinding.instance.addPostFrameCallback((_) {
-
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         _startBroadcastAndDiscovery();
-      // });
+      });
     } else {
       // For desktop platforms, only set up discovery
       _setupDesktopDiscovery();
@@ -80,6 +79,9 @@ class _DeviceDiscoveryScreen extends State<DeviceDiscoveryScreen> {
             }
           });
           break;
+        case 'onServiceRegistered':
+          _startDiscovery();
+          break;
       }
     });
   }
@@ -99,11 +101,13 @@ class _DeviceDiscoveryScreen extends State<DeviceDiscoveryScreen> {
           _statusMessage = 'Broadcast started, beginning discovery...';
         });
 
-        // Add a small delay to ensure broadcast is properly started
-        await Future.delayed(const Duration(milliseconds: 500));
+        // The start discovery for initial part will start when the service is registered,
+        // from the onServiceRegister() method in android/app/src/main/java/com/example/brute_connect/MDNSService.java.
+            // Add a small delay to ensure broadcast is properly started
+            // await Future.delayed(const Duration(milliseconds: 500));
 
-        // Then start discovery
-        _startDiscovery();
+            // Then start discovery
+            // _startDiscovery();
       }
     } on PlatformException catch (e) {
       setState(() {

@@ -14,8 +14,10 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class MDNSService {
     private static final String TAG = "MDNSService";
@@ -23,10 +25,10 @@ public class MDNSService {
     private static final String SERVICE_TYPE = "_mdnsconnect._udp";
 //    private static final int SERVICE_PORT = 55555;
 
-    private NsdManager nsdManager;
+    private final NsdManager nsdManager;
     private NsdManager.RegistrationListener registrationListener;
     private NsdManager.DiscoveryListener discoveryListener;
-    private DeviceDiscoveryListener deviceDiscoveryListener;
+    private MDNSServiceListener mdnsServiceListener;
     private NsdManager.ResolveListener resolveListener;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -35,22 +37,20 @@ public class MDNSService {
     private String ownIP;
     private boolean isRegistered = false;
     private boolean isDiscovering = false;
-    private boolean isDiscoveryActive = false;
 
     private final Map<String, Map<String, Object>> discoveredDevicesByIp = new HashMap<>();
+    private final Set<String> resolveInProgress = new HashSet<>();
 
-
-    private final Context context;
-    private ServerSocket serverSocket;
     private int localPort;
 
-    public interface DeviceDiscoveryListener {
+    public interface MDNSServiceListener {
         void onDeviceDiscovered(List<Map<String, Object>> devices);
+        void onServiceRegistered();
     }
 
-    public MDNSService(Context context, DeviceDiscoveryListener listener) {
-        this.context = context;
-        this.deviceDiscoveryListener = listener;
+
+    public MDNSService(Context context, MDNSServiceListener listener) {
+        this.mdnsServiceListener = listener;
         this.nsdManager = (NsdManager) context.getSystemService(Context.NSD_SERVICE);
 
         // Find the free port and store it for mDNS service.
@@ -64,7 +64,7 @@ public class MDNSService {
 
         try {
             // Ask the system for a free port
-            serverSocket = new ServerSocket(0);
+            ServerSocket serverSocket = new ServerSocket(0);
             localPort = serverSocket.getLocalPort(); // OS-chosen port
         } catch (IOException e) {
             e.printStackTrace();
@@ -77,6 +77,7 @@ public class MDNSService {
     protected void startBroadcast() {
         if (isRegistered) {
             Log.d(TAG, "Broadcasting already started");
+            notifyServiceRegistered();
             return;
         }
 
@@ -97,6 +98,17 @@ public class MDNSService {
                 serviceName = serviceInfo.getServiceName();
                 isRegistered = true;
                 Log.d(TAG, "Service registered: " + serviceName);
+                Log.d(TAG, "Service registered: " + SERVICE_TYPE);
+                Log.d(TAG, "Service registered: " + localPort);
+
+                // Invoke callback that notifies dart file, that service is registered,
+                // So, start the discovery.
+                notifyServiceRegistered();
+
+//                // ✅ Start discovery after successful registration
+//                if (!isDiscovering) {
+//                    startDiscovery();
+//                }
             }
 
             @Override
@@ -132,6 +144,15 @@ public class MDNSService {
             return;
         }
 
+        // Clear previous discoveries
+        synchronized (discoveredDevicesByIp) {
+            discoveredDevicesByIp.clear();
+        }
+        synchronized (resolveInProgress) {
+            resolveInProgress.clear();
+        }
+        notifyDevicesUpdated();
+
         // Instantiate a new DiscoveryListener.
         discoveryListener = new NsdManager.DiscoveryListener() {
             @Override
@@ -160,15 +181,28 @@ public class MDNSService {
                 }
 
                 Log.d(TAG, "Found service: " + foundService);
-                Log.d(TAG, String.valueOf(localPort));
+
+                // Avoid resolving the same service multiple times simultaneously
+                synchronized (resolveInProgress) {
+                    if (resolveInProgress.contains(foundService)) {
+                        Log.d(TAG, "Already resolving service: " + foundService);
+                        return;
+                    }
+
+                    resolveInProgress.add(foundService);
+                }
+
                 resolveService(serviceInfo);
             }
 
             @Override
             public void onServiceLost(NsdServiceInfo serviceInfo) {
-                //
-                String lostName = serviceInfo.getServiceName();
-                Log.d(TAG, "Service lost: " + lostName);
+                String lostService = serviceInfo.getServiceName();
+                Log.d(TAG, "Service lost: " + lostService);
+
+                synchronized (resolveInProgress) {
+                    resolveInProgress.remove(lostService);
+                }
             }
 
             @Override
@@ -195,7 +229,6 @@ public class MDNSService {
         nsdManager.discoverServices(
                 SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, discoveryListener);
         Log.d("MDNSService", "Starting discovery with listener: " + discoveryListener.toString());
-        isDiscoveryActive = true;
 
     }
 
@@ -213,11 +246,14 @@ public class MDNSService {
                 final String resolvedName = serviceInfo.getServiceName();
                 // Called when the resolve fails. Use the error code to debug.
                 Log.e(TAG, "Resolve failed for " + resolvedName + ": " + errorCode);
+
+                synchronized (resolveInProgress) {
+                    resolveInProgress.remove(resolvedName);
+                }
             }
 
             @Override
             public void onServiceResolved(NsdServiceInfo resolveService) {
-                // Get
                 String resolvedServiceName = resolveService.getServiceName();
                 String resolvedHostAddress = resolveService.getHost().getHostAddress();
                 int resolvedPort = resolveService.getPort();
@@ -225,7 +261,10 @@ public class MDNSService {
                 Log.d(TAG, "Resolved service: " + resolvedServiceName +
                         " at " + resolvedHostAddress + ":" + resolvedPort);
 
-                Log.e(TAG, "Resolve Succeeded. " + resolvedServiceName);
+                synchronized (resolveInProgress) {
+                    resolveInProgress.remove(resolvedServiceName);
+                }
+
                 Log.d(TAG, resolveService.getAttributes().toString());
 
                 // Save our own IP address if this is our service
@@ -297,23 +336,29 @@ public class MDNSService {
             nsdManager.resolveService(serviceInfo, resolveListener);
         } catch (Exception e) {
             Log.e(TAG, "Error resolving service: " + e.getMessage());
-//            synchronized (resolveInProgress) {
-//                resolveInProgress.remove(serviceToResolve);
-//            }
+            synchronized (resolveInProgress) {
+                resolveInProgress.remove(serviceInfo.getServiceName());
+            }
         }
     }
 
     private void notifyDevicesUpdated() {
-        if (deviceDiscoveryListener != null) {
+        if (mdnsServiceListener != null) {
             List<Map<String, Object>> devicesList;
             synchronized (discoveredDevicesByIp) {
                 devicesList = new ArrayList<>(discoveredDevicesByIp.values());
             }
 
             mainHandler.post(() -> {
-                deviceDiscoveryListener.onDeviceDiscovered(devicesList);
+                mdnsServiceListener.onDeviceDiscovered(devicesList);
             });
         }
+    }
+
+    private void notifyServiceRegistered() {
+        mainHandler.post(() -> {
+            mdnsServiceListener.onServiceRegistered();
+        });
     }
 
     public void stopDiscovery() {
@@ -321,13 +366,15 @@ public class MDNSService {
             try {
                 Log.d("MDNSService", "Starting discovery with listener: " + discoveryListener.toString());
                 nsdManager.stopServiceDiscovery(discoveryListener);
+
             } catch (IllegalArgumentException e) {
                 // Log the error, but it might be okay if it's already stopped
                 Log.e("MDNSService", "Error stopping discovery: " + e.getMessage());
+
             } finally {
-                isDiscoveryActive = false;
                 isDiscovering = false;
                 discoveryListener = null;
+                resolveInProgress.clear();
             }
         }
     }
