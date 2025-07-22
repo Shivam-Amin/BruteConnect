@@ -28,7 +28,8 @@ public class MainActivity extends FlutterActivity implements MDNSService.MDNSSer
         channel.setMethodCallHandler((call, result) -> {
             switch (call.method) {
                 case "startBroadcast":
-                    mdnsService.startBroadcast();
+                    int socketPort = (int) call.arguments;
+                    mdnsService.startBroadcast(socketPort);
                     result.success(true);
                     break;
                 case "startDiscovery":

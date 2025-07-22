@@ -3,15 +3,13 @@ package com.example.brute_connect;
 import android.content.Context;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
-import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.ext.SdkExtensions;
 import android.util.Log;
 
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -23,6 +21,7 @@ public class MDNSService {
     private static final String TAG = "MDNSService";
     private static final String SERVICE_NAME = "bruteconnect";
     private static final String SERVICE_TYPE = "_mdnsconnect._udp";
+    private static  ServerSocket serverSocket;
 //    private static final int SERVICE_PORT = 55555;
 
     private final NsdManager nsdManager;
@@ -64,7 +63,7 @@ public class MDNSService {
 
         try {
             // Ask the system for a free port
-            ServerSocket serverSocket = new ServerSocket(0);
+            serverSocket = new ServerSocket(0);
             localPort = serverSocket.getLocalPort(); // OS-chosen port
         } catch (IOException e) {
             e.printStackTrace();
@@ -74,7 +73,7 @@ public class MDNSService {
     /**
      * Creates the mDNS service, and registers it on the local network.
      */
-    protected void startBroadcast() {
+    protected void startBroadcast(int socketPort) {
         if (isRegistered) {
             Log.d(TAG, "Broadcasting already started");
             notifyServiceRegistered();
@@ -89,6 +88,7 @@ public class MDNSService {
         serviceInfo.setServiceName(SERVICE_NAME);
         serviceInfo.setServiceType(SERVICE_TYPE);
         serviceInfo.setPort(localPort);
+        serviceInfo.setAttribute("socketPort", String.valueOf(socketPort));
 
         // create a registration listener.
         registrationListener = new NsdManager.RegistrationListener() {
@@ -100,6 +100,14 @@ public class MDNSService {
                 Log.d(TAG, "Service registered: " + serviceName);
                 Log.d(TAG, "Service registered: " + SERVICE_TYPE);
                 Log.d(TAG, "Service registered: " + localPort);
+
+                if (!serverSocket.isClosed()) {
+                    try {
+                        serverSocket.close();
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
 
                 // Invoke callback that notifies dart file, that service is registered,
                 // So, start the discovery.
@@ -289,10 +297,11 @@ public class MDNSService {
                     for (String key : attributes.keySet()) {
                         byte[] value = attributes.get(key);
                         if (value != null) {
-                            attributeMap.put(key, new String(value));
+                            attributeMap.put(key, new String(value, StandardCharsets.UTF_8));
                         }
                     }
                 }
+                Log.d(TAG, "Attributes: " + attributeMap.toString());
 
                 // Try to get a device ID from attributes
                 String deviceName = attributeMap.get("deviceName");
@@ -300,11 +309,15 @@ public class MDNSService {
                     deviceName = resolvedServiceName;
                 }
 
+                int socketPort = Integer.parseInt(attributeMap.get("socketPort"));
+
                 // Create or update device info map
                 Map<String, Object> deviceInfo = new HashMap<>();
-                deviceInfo.put("name", deviceName);
-                deviceInfo.put("address", resolvedHostAddress);
-                deviceInfo.put("port", resolvedPort);
+                deviceInfo.put("deviceName", deviceName);
+                deviceInfo.put("deviceIp", resolvedHostAddress);
+                deviceInfo.put("devicePort", resolvedPort);
+                deviceInfo.put("deviceSocketPort", socketPort);
+
 //                deviceInfo.putAll(attributeMap);
 
                 // Use IP as key if no device ID available
@@ -374,7 +387,7 @@ public class MDNSService {
             } finally {
                 isDiscovering = false;
                 discoveryListener = null;
-                resolveInProgress.clear();
+//                resolveInProgress.clear();
             }
         }
     }

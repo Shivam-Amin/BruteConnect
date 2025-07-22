@@ -12,9 +12,9 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'mDNS Connect App',
+      title: 'BruteConnect',
       home: DeviceDiscoveryScreen(),
-      theme: ThemeData(primarySwatch: Colors.blue),
+      theme: ThemeData.dark(),
     );
   }
 }

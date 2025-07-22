@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:brute_connect/Services/desktop_mdns_discovery.dart';
+import 'package:brute_connect/Services/socket_server.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:brute_connect/pages/home.dart';
+
 
 class DeviceDiscoveryScreen extends StatefulWidget {
     const DeviceDiscoveryScreen({super.key});
@@ -21,26 +23,53 @@ class _DeviceDiscoveryScreen extends State<DeviceDiscoveryScreen> {
   String _statusMessage = 'Starting service...';
   Timer? _discoveryTimer;
   final int _discoveryDuration = 10; // seconds to run discovery
+  int SocketPort = 0;
 
   // Desktop mDNS discovery service
-  DesktopMDNSDiscovery? _desktopMDNSDiscovery;
+  late DesktopMDNSDiscovery _desktopMDNSDiscovery; // late caz, it'll get init. in initState()
+  static final socketServer = SocketServer();
 
 
   @override
   void initState() {
     super.initState();
+    _initializeServices();
+  }
+
+  Future<void> _initializeServices() async {
+    setState(() {
+      _statusMessage = "Starting Socket Server...";
+    });
+
+    await initSocketServer(); // ensure SocketPort is ready
 
     if (Platform.isAndroid || Platform.isIOS) {
-      _isDiscovering = true; // make it true, so that for initial _startBroadcastAndDiscovery(), it stays disabled.
+      _isDiscovering = true;
       _setupMethodCallHandler();
-      // Start broadcasting and initial discovery automatically for mobile
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _startBroadcastAndDiscovery();
-      });
+      await _startBroadcastAndDiscovery(); // now safely passes the SocketPort
     } else {
-      // For desktop platforms, only set up discovery
       _setupDesktopDiscovery();
     }
+  }
+
+  void _setupMethodCallHandler() {
+    platform.setMethodCallHandler((call) async {
+      switch (call.method) {
+        case 'onDevicesDiscovered':
+          final List<dynamic> devices = call.arguments;
+          setState(() {
+            _discoveredDevices.clear();
+            for (var device in devices) {
+              _discoveredDevices.add(Map<String, dynamic>.from(device));
+            }
+          });
+          break;
+        case 'onServiceRegistered':
+
+          _startDiscovery();
+          break;
+      }
+    });
   }
 
   void _setupDesktopDiscovery() {
@@ -68,23 +97,8 @@ class _DeviceDiscoveryScreen extends State<DeviceDiscoveryScreen> {
     });
   }
 
-  void _setupMethodCallHandler() {
-    platform.setMethodCallHandler((call) async {
-      switch (call.method) {
-        case 'onDevicesDiscovered':
-          final List<dynamic> devices = call.arguments;
-          setState(() {
-            _discoveredDevices.clear();
-            for (var device in devices) {
-              _discoveredDevices.add(Map<String, dynamic>.from(device));
-            }
-          });
-          break;
-        case 'onServiceRegistered':
-          _startDiscovery();
-          break;
-      }
-    });
+  Future<void> initSocketServer() async {
+    SocketPort = (await socketServer.start())!;
   }
 
   Future<void> _startBroadcastAndDiscovery() async {
@@ -96,7 +110,7 @@ class _DeviceDiscoveryScreen extends State<DeviceDiscoveryScreen> {
       if (Platform.isAndroid || Platform.isIOS) {
         // Mobile platforms: use the platform channel
         // First start the broadcasting service
-        await platform.invokeMethod('startBroadcast');
+        await platform.invokeMethod('startBroadcast', SocketPort);
         setState(() {
           // _isBroadcasting = true;
           _statusMessage = 'Broadcast started, beginning discovery...';
@@ -179,6 +193,7 @@ class _DeviceDiscoveryScreen extends State<DeviceDiscoveryScreen> {
     } else {
       _desktopMDNSDiscovery?.dispose();
     }
+    socketServer.stop();
     super.dispose();
   }
 
@@ -231,19 +246,28 @@ class _DeviceDiscoveryScreen extends State<DeviceDiscoveryScreen> {
               itemCount: _discoveredDevices.length,
               itemBuilder: (context, index) {
                 final device = _discoveredDevices[index];
+                final String deviceName = device['deviceName']?.toString() ?? 'Unknown Device';
+                final String deviceIp = device['deviceIp']?.toString() ?? 'Unknown IP';
+                final String devicePort = device['devicePort']?.toString() ?? 'Unknown IP';
+                final int deviceSocketPort = device['deviceSocketPort'] ?? -1;
+
                 return ListTile(
-                  title: Text(device['name'].toString()),
+                  title: Text(deviceName),
                   subtitle: Text(
-                    'IP: ${device['address']} | Port: ${device['port']}',
+                    'IP: $deviceIp | Port: $devicePort',
                   ),
                   trailing: const Icon(Icons.devices),
                   onTap: () {
-                    // We'll implement connection functionality in the next step
+                    // TODO: We'll implement connection functionality in the next step
                     if (Platform.isAndroid || Platform.isIOS) {
-                      final String deviceName = device['name']?.toString() ?? 'Unknown Device';
+
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => Home(deviceName: deviceName)),
+                        MaterialPageRoute(builder: (context) => Home(
+                          deviceName: deviceName,
+                          deviceIp: deviceIp,
+                          deviceSocketPort: deviceSocketPort,
+                        )),
                       );
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
