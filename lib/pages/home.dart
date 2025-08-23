@@ -1,3 +1,4 @@
+import 'package:brute_connect/Services/file_sharing.dart';
 import 'package:brute_connect/Services/socket_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -29,7 +30,7 @@ class _HomeState extends State<Home> {
       setState(() {
         _statusMessage = 'Socket Connected!!';
       });
-      socketClient.send('Hello, Something.////////////////////////');
+      socketClient.sendMessage('Hello, Something.////////////////////////');
     } on PlatformException catch (e) {
       setState(() {
         _statusMessage = 'Failed to connect to device: ${e.message}';
@@ -83,7 +84,8 @@ class _HomeState extends State<Home> {
                 FeatureTile(
                   icon: Icons.insert_drive_file,
                   label: 'Send files',
-                  onTap: () => print('Send files tapped'),
+                  // onTap: () => print('Send files tapped'),
+                  onTap: () => selectFile(socketClient),
                 ),
               ],
             ),

@@ -1,10 +1,24 @@
 import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class SocketServer {
   ServerSocket? _serverSocket;
   int? _port;
+
+  final FlutterLocalNotificationsPlugin notifications =
+      FlutterLocalNotificationsPlugin();
+
+  Future<void> initNotifications() async {
+    const AndroidInitializationSettings androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+
+    const InitializationSettings initSettings =
+        InitializationSettings(android: androidSettings);
+
+    await notifications.initialize(initSettings);
+  }
 
   /// Starts the socket server on a free port and returns the port.
   Future<int?> start() async {
@@ -20,20 +34,11 @@ class SocketServer {
           final remote = client.remoteAddress.address;
           final port = client.remotePort;
           debugPrint('🔌 Client connected from $remote:$port');
-
-          client.listen((data) {
-              final message = String.fromCharCodes(data);
-              debugPrint('📥 Received: $message');
-              client.write('Echo: $message');
-            },
-            onDone: () {
-              debugPrint('❌ Client disconnected: $remote:$port');
-              client.close();
-            },
-            onError: (e) {
-              debugPrint('⚠️ Client error: $e');
-            },
-          );
+      },
+        onDone: () {
+          // debugPrint('❌ Server closed connection');
+          debugPrint('❌ ServerSocket Connection Finished!');
+          _serverSocket?.close();
         },
         onError: (e) {
           debugPrint('⚠️ Server socket error: $e');
@@ -47,6 +52,7 @@ class SocketServer {
       return null;
     }
   }
+  
 
   /// Stops the socket server
   Future<void> stop() async {

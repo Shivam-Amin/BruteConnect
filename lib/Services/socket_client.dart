@@ -32,11 +32,26 @@ class SocketClient {
     }
   }
 
-  /// Send a message to the server
-  void send(String message) {
-    debugPrint('📤 Sending: $message');
-    _socket.write(message);
+  Future<void> sendMessage(String msg) async {
+    _socket.writeln(jsonEncode({"type": "message", "data": msg}));
   }
+
+  Future<void> sendFile(Map<String, Object> metaData, File file) async {
+    var sendMetaData = jsonEncode(metaData);
+    _socket.writeln(sendMetaData);
+
+    // 2. Send file content
+    await _socket.addStream(file.openRead());
+    await _socket.flush();
+
+    print("File sent: ${metaData['name']}");
+  }
+
+  /// Send a message to the server
+  // void send(String message) {
+  //   debugPrint('📤 Sending: $message');
+  //   _socket.write(message);
+  // }
 
   /// Close the socket connection
   void disconnect() {
