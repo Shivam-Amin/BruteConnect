@@ -2,6 +2,7 @@
 import 'dart:io';
 
 import 'package:brute_connect/Services/socket_client.dart';
+import 'package:brute_connect/Services/utils/fileMetaData.dart';
 import 'package:file_picker/file_picker.dart';
 
 // class FileSharing {
@@ -40,25 +41,32 @@ import 'package:file_picker/file_picker.dart';
 // }
 
 
+
+
+
 Future<void> selectFile(SocketClient socketClient) async {
   FilePickerResult? result = await FilePicker.platform.pickFiles(
     type: FileType.any,
     allowMultiple: false,
   );
+
   if (result != null) {
     final filePath = result.files.single.path!;
     final fileName = result.files.single.name;
     final file = File(filePath);
     final fileSize = await file.length();
+
+    final metaData = FileMetadata(name: file.path.split('/').last, size: await file.length());
+
     // Handle the selected file path
     print('Selected file: $filePath');
 
     // 1. Send metadata
-    final metaData = {
-      'type': 'file',
-      'name': fileName,
-      'size': fileSize,
-    };
+    // final metaData = {
+    //   'type': 'file',
+    //   'name': fileName,
+    //   'size': fileSize,
+    // };
 
     socketClient.sendFile(metaData, file);
 
