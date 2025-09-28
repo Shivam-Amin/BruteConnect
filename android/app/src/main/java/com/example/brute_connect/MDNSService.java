@@ -301,15 +301,19 @@ public class MDNSService {
                         }
                     }
                 }
-                Log.d(TAG, "Attributes: " + attributeMap.toString());
+                Log.d(TAG, "Attributes: " + attributeMap.values());
 
                 // Try to get a device ID from attributes
                 String deviceName = attributeMap.get("deviceName");
+                Log.d(TAG, "00000000: ");
+
                 if (deviceName == null) {
                     deviceName = resolvedServiceName;
                 }
 
+                // TODO: add logic for soketPort in desktop app, right now it's random port.
                 int socketPort = Integer.parseInt(attributeMap.get("socketPort"));
+                Log.d(TAG, "11111: ");
 
                 // Create or update device info map
                 Map<String, Object> deviceInfo = new HashMap<>();
@@ -317,12 +321,14 @@ public class MDNSService {
                 deviceInfo.put("deviceIp", resolvedHostAddress);
                 deviceInfo.put("devicePort", resolvedPort);
                 deviceInfo.put("deviceSocketPort", socketPort);
+                Log.d(TAG, "22222: ");
 
 //                deviceInfo.putAll(attributeMap);
 
                 // Use IP as key if no device ID available
 //                String deviceKey = deviceId != null ? deviceId : hostAddress;
                 String deviceKey = resolvedHostAddress;
+                Log.d(TAG, "device INFO: " + deviceInfo);
                 discoveredDevicesByIp.put(deviceKey, deviceInfo);
                 Log.d(TAG, deviceInfo.toString());
                 notifyDevicesUpdated();

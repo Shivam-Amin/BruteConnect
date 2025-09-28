@@ -151,29 +151,57 @@ class SocketServer {
     });
   }
 
-  /// Process accumulated buffer data
+  /// Process accumulated buffer data and extract complete messages
   Future<void> _processBuffer(Uint8List buffer, Socket client) async {
-    var message = String.fromCharCodes(buffer);
+    final message = String.fromCharCodes(buffer);
     
-    // Check for complete JSON messages (enclosed in braces)
-    if (message.startsWith('{') && message.contains('}')) {
-      var endIndex = message.indexOf('}') + 1;
-      var jsonString = message.substring(0, endIndex);
+    // Look for complete JSON messages
+    int startIndex = 0;
+    while (startIndex < message.length) {
+      // Find opening brace
+      int openBrace = message.indexOf('{', startIndex);
+      if (openBrace == -1) break;
+      
+      // Find matching closing brace
+      int braceCount = 0;
+      int closeBrace = -1;
+      
+      for (int i = openBrace; i < message.length; i++) {
+        if (message[i] == '{') braceCount++;
+        else if (message[i] == '}') {
+          braceCount--;
+          if (braceCount == 0) {
+            closeBrace = i;
+            break;
+          }
+        }
+      }
+      
+      if (closeBrace == -1) {
+        // Incomplete message, wait for more data
+        break;
+      }
+      
+      // Extract complete JSON message
+      final jsonString = message.substring(openBrace, closeBrace + 1);
       
       try {
-        var jsonData = json.decode(jsonString);
-        print('----JSONDATA: ${jsonData}');
+        final jsonData = json.decode(jsonString);
+        debugPrint('----JSONDATA: $jsonData');
+        debugPrint('--------TYPE: ${jsonData['type']}');
         await _handleMessage(jsonData, client);
       } catch (e) {
-        debugPrint('⚠️ Failed to parse JSON: $e');
+        debugPrint('⚠️ Failed to parse JSON: $jsonString, Error: $e');
       }
+      
+      startIndex = closeBrace + 1;
     }
   }
 
   /// Handle different message types
   Future<void> _handleMessage(Map<String, dynamic> message, Socket client) async {
-    var type = message['type'] as String?;
-    print('--------TYPE: ${type}');
+    final type = message['type'] as String?;
+    
     switch (type) {
       case 'message':
         _handleRegularMessage(message['data'] as String);
@@ -209,9 +237,11 @@ class SocketServer {
       debugPrint('📄 Received file metadata: ${metadata.name} (${metadata.size} bytes)');
       
       // Prepare file for writing
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/${metadata.name}');
+      // final directory = await getApplicationDocumentsDirectory();
+      final directory = await getDownloadsDirectory();
+      final file = File('${directory?.path}/${metadata.name}');
       final sink = file.openWrite();
+      print("SINKKKK:::: '${directory?.path}/${metadata.name}'");
       
       // Store transfer info
       _activeTransfers[client] = _FileTransfer(

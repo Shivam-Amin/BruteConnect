@@ -135,14 +135,14 @@ class SocketClient {
   }
 
   /// Handle different responses from server
-  void _handleServerResponse(Map<String, dynamic> response) {
+  void _handleServerResponse(Map<String, dynamic> response) async {
     final type = response['type'] as String?;
     
     switch (type) {
       case 'file_ready':
         debugPrint('🟢 Server ready to receive file');
         // File sending will be handled externally when this response is received
-        _sendFileChunks(fileToSend);
+        await _sendFileChunks(fileToSend);
         break;
         
       case 'file_received':
@@ -217,28 +217,30 @@ class SocketClient {
     }
 
     try {
-      final fileToSend = this.fileToSend;
+      // final fileToSend = this.fileToSend;
       if (fileToSend != null) {
         debugPrint('📤 Starting file transfer...');
         
         const int chunkSize = 8192; // 8KB chunks
-        final fileStream = fileToSend.openRead();
+        final fileStream = fileToSend?.openRead();
         
-        await for (var chunk in fileStream) {
-          // Encode chunk as base64 for JSON transmission
-          final base64Chunk = base64.encode(chunk);
-          
-          final chunkMessage = json.encode({
-            "type": "file_chunk",
-            "data": base64Chunk,
-            "size": chunk.length,
-            "timestamp": DateTime.now().millisecondsSinceEpoch
-          });
-          
-          _socket!.write(chunkMessage);
-          
-          // Small delay to prevent overwhelming the receiver
-          await Future.delayed(Duration(milliseconds: 1));
+        if (fileStream != null) {
+          await for (var chunk in fileStream) {
+            // Encode chunk as base64 for JSON transmission
+            final base64Chunk = base64.encode(chunk);
+            
+            final chunkMessage = json.encode({
+              "type": "file_chunk",
+              "data": base64Chunk,
+              "size": chunk.length,
+              "timestamp": DateTime.now().millisecondsSinceEpoch
+            });
+            
+            _socket!.write(chunkMessage);
+            
+            // Small delay to prevent overwhelming the receiver
+            await Future.delayed(Duration(milliseconds: 1));
+          }
         }
 
         // Send completion signal

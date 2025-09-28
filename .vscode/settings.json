@@ -1,3 +1,4 @@
 {
-    "cmake.sourceDirectory": "/Users/shivam/Desktop/Projects/Flutter/brute_connect/linux"
+    "cmake.sourceDirectory": "/Users/shivam/Desktop/Projects/Flutter/brute_connect/linux",
+    "kiroAgent.configureMCP": "Disabled"
 }
