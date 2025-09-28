@@ -20,8 +20,10 @@ class RemoteCursorScreen extends StatefulWidget {
 
 class _RemoteCursorScreenState extends State<RemoteCursorScreen> {
   Offset? _lastPanPosition;
-  bool _showFeedback = false;
+  bool _showFeedbackOverlay = false;
   String _feedbackText = '';
+  bool _isScaling = false;
+  int _pointerCount = 0;
 
   void _sendCursorCommand(Map<String, dynamic> command) {
     if (!widget.socketClient.isConnected) {
@@ -57,14 +59,30 @@ class _RemoteCursorScreenState extends State<RemoteCursorScreen> {
     _showFeedback('Right Click');
   }
 
-  void _handlePanStart(DragStartDetails details) {
-    _lastPanPosition = details.localPosition;
+  void _handleScaleStart(ScaleStartDetails details) {
+    _lastPanPosition = details.localFocalPoint;
+    _pointerCount = details.pointerCount;
+    _isScaling = false;
+    
+    // Detect two-finger tap
+    if (details.pointerCount == 2) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (!_isScaling && _pointerCount == 2) {
+          _handleTwoFingerTap();
+        }
+      });
+    }
   }
 
-  void _handlePanUpdate(DragUpdateDetails details) {
-    if (_lastPanPosition != null) {
-      final deltaX = (details.localPosition.dx - _lastPanPosition!.dx).round();
-      final deltaY = (details.localPosition.dy - _lastPanPosition!.dy).round();
+  void _handleScaleUpdate(ScaleUpdateDetails details) {
+    if (_lastPanPosition == null) return;
+    
+    _isScaling = true; // Mark that we're in a scaling/dragging gesture
+    
+    if (details.pointerCount == 1) {
+      // Single finger - cursor movement
+      final deltaX = (details.localFocalPoint.dx - _lastPanPosition!.dx).round();
+      final deltaY = (details.localFocalPoint.dy - _lastPanPosition!.dy).round();
       
       if (deltaX.abs() > 1 || deltaY.abs() > 1) {
         _sendCursorCommand({
@@ -73,24 +91,11 @@ class _RemoteCursorScreenState extends State<RemoteCursorScreen> {
           "deltaX": deltaX,
           "deltaY": deltaY
         });
+        
+        _lastPanPosition = details.localFocalPoint;
       }
-      
-      _lastPanPosition = details.localPosition;
-    }
-  }
-
-  void _handlePanEnd(DragEndDetails details) {
-    _lastPanPosition = null;
-  }
-
-  void _handleScaleStart(ScaleStartDetails details) {
-    if (details.pointerCount == 2) {
-      _lastPanPosition = details.localFocalPoint;
-    }
-  }
-
-  void _handleScaleUpdate(ScaleUpdateDetails details) {
-    if (details.pointerCount == 2 && _lastPanPosition != null) {
+    } else if (details.pointerCount == 2) {
+      // Two fingers - scrolling
       final deltaY = (details.localFocalPoint.dy - _lastPanPosition!.dy).round();
       
       if (deltaY.abs() > 5) {
@@ -111,6 +116,8 @@ class _RemoteCursorScreenState extends State<RemoteCursorScreen> {
 
   void _handleScaleEnd(ScaleEndDetails details) {
     _lastPanPosition = null;
+    _isScaling = false;
+    _pointerCount = 0;
   }
 
   void _showConnectionError() {
@@ -135,14 +142,14 @@ class _RemoteCursorScreenState extends State<RemoteCursorScreen> {
 
   void _showFeedback(String action) {
     setState(() {
-      _showFeedback = true;
+      _showFeedbackOverlay = true;
       _feedbackText = action;
     });
     
     Future.delayed(const Duration(milliseconds: 300), () {
       if (mounted) {
         setState(() {
-          _showFeedback = false;
+          _showFeedbackOverlay = false;
         });
       }
     });
@@ -177,9 +184,6 @@ class _RemoteCursorScreenState extends State<RemoteCursorScreen> {
           // Main touch area
           GestureDetector(
             onTap: _handleTap,
-            onPanStart: _handlePanStart,
-            onPanUpdate: _handlePanUpdate,
-            onPanEnd: _handlePanEnd,
             onScaleStart: _handleScaleStart,
             onScaleUpdate: _handleScaleUpdate,
             onScaleEnd: _handleScaleEnd,
@@ -220,26 +224,10 @@ class _RemoteCursorScreenState extends State<RemoteCursorScreen> {
             ),
           ),
           
-          // Two-finger tap detector (overlay)
-          GestureDetector(
-            onTap: () {}, // Consume single taps to prevent interference
-            onScaleStart: (details) {
-              if (details.pointerCount == 2) {
-                // This is a two-finger tap
-                Future.delayed(const Duration(milliseconds: 100), () {
-                  _handleTwoFingerTap();
-                });
-              }
-            },
-            child: Container(
-              width: double.infinity,
-              height: double.infinity,
-              color: Colors.transparent,
-            ),
-          ),
+
           
           // Feedback overlay
-          if (_showFeedback)
+          if (_showFeedbackOverlay)
             Center(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
