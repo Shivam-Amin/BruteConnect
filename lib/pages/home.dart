@@ -1,5 +1,7 @@
 import 'package:brute_connect/Services/file_sharing.dart';
 import 'package:brute_connect/Services/socket_client.dart';
+import 'package:brute_connect/pages/presentation_mode_screen.dart';
+import 'package:brute_connect/pages/remote_cursor_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -78,7 +80,16 @@ class _HomeState extends State<Home> {
                 FeatureTile(
                   icon: Icons.present_to_all,
                   label: 'Presentation\n remote',
-                  onTap: () => print('Presentation tapped'),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => PresentationModeScreen(
+                        deviceName: widget.deviceName,
+                        deviceIp: widget.deviceIp,
+                        socketClient: socketClient,
+                      ),
+                    ),
+                  ),
                 ),
                 // Top-right
                 FeatureTile(
@@ -98,7 +109,16 @@ class _HomeState extends State<Home> {
                 FeatureTile(
                   icon: Icons.touch_app,
                   label: 'Remote input',
-                  onTap: () => print('Remote input tapped'),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => RemoteCursorScreen(
+                        deviceName: widget.deviceName,
+                        deviceIp: widget.deviceIp,
+                        socketClient: socketClient,
+                      ),
+                    ),
+                  ),
                 ),
                 //Bottom-right
                 FeatureTile(
